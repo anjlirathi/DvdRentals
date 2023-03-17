@@ -100,3 +100,43 @@ Update average_category_rental_count
 Set 
 avg_rental_count = Floor(avg_rental_count)
 Returning * ;
+
+--Percentile| Customer_A lies in Top X% in film category_Z
+
+Select 
+  customer_id,
+  category_name,
+  rental_count,
+  Percent_Rank() Over(
+      Partition By customer_id
+      Order By rental_count Desc
+  ) As percentile
+From category_rental_count
+Order By customer_id, 
+    rental_count Desc
+    limit 20 ;
+
+-- Use ceiling 
+
+Drop Table If Exists customer_category_percentile;
+CREATE TEMP TABLE customer_category_percentile AS
+Select 
+  customer_id,
+  category_name,
+  --rental_count,
+  Ceiling(
+  100 * Percent_Rank() Over(
+      Partition By customer_id
+      Order By rental_count Desc
+  ) 
+  )As percentile
+From category_rental_count;
+
+--
+
+Select * FROM  customer_category_percentile
+Where customer_id =1
+Order By customer_id, 
+        percentile  ;
+   -- limit 20 ;
+    
