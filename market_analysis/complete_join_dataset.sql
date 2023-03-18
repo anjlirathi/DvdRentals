@@ -139,4 +139,136 @@ Where customer_id =1
 Order By customer_id, 
         percentile  ;
    -- limit 20 ;
+
+
+
+-- Use ceiling | Updated -18/3/2023
+
+Drop Table If Exists customer_category_percentile;
+CREATE TEMP TABLE customer_category_percentile AS
+Select 
+  customer_id,
+  category_name,
+  --rental_count,
+  Ceiling(
+  100 * Percent_Rank() Over(
+      Partition By category_name
+      Order By rental_count Desc
+  ) 
+  )As percentile
+From category_rental_count;
+
+--
+
+Select * FROM  customer_category_percentile
+Where customer_id =1
+Order By customer_id, 
+        percentile
+    limit 20 ;
     
+    
+    
+
+-- Calling all tables
+
+Select * from category_rental_count
+Where customer_id = 1
+Order by rental_count;
+
+Select * from customer_total_rental_count
+limit 5;
+
+Select * from average_category_rental_count
+LIMIT 5;
+
+Select * from customer_category_percentile
+order by customer_id,percentile
+Limit 5;
+
+-- Joining all calculated tables
+
+DROP TABLE IF EXISTS customer_category_joint_dataset;
+CREATE TEMP TABLE customer_category_joint_dataset AS
+SELECT 
+  t1.customer_id,
+  t1.category_name,
+  t1.rental_count,
+  t2.total_rental_count,
+  t3.avg_rental_count,
+  t4.percentile
+FROM category_rental_count AS t1
+Inner Join customer_total_rental_count AS t2
+ON t1.customer_id = t2.customer_id
+Inner Join average_category_rental_count AS t3
+On t1.category_name =t3.category_name
+Inner Join customer_category_percentile AS t4
+On t1.customer_id = t4.customer_id
+AND t1.category_name =t4.category_name
+;
+--inspection
+SELECT * FROM customer_category_joint_dataset
+Where customer_id =1
+Order by percentile
+LIMIT 10;
+
+-- Adding Calculated feilds
+-- Average Comparison and Category Percentage
+
+DROP TABLE IF EXISTS customer_category_joint_table;
+CREATE TEMP TABLE customer_category_joint_table AS
+SELECT 
+    t1.customer_id,
+    t1.category_name,
+    t1.rental_count,
+    t1.latest_rental_date,
+    t2.total_rental_count,
+    t3.avg_rental_count,
+    t4.percentile,
+    t1.rental_count-t3.avg_rental_count AS average_comparison,
+    ROUND(100 * t1.rental_count/t2.total_rental_count) AS category_percentage
+FROM category_rental_count AS t1
+INNER JOIN customer_total_rental_count AS t2
+ON t1.customer_id = t2.customer_id
+INNER JOIN average_category_rental_count AS t3
+ON t1.category_name = t3.category_name
+INNER JOIN customer_category_percentile AS t4
+ON t1.customer_id = t4.customer_id
+AND t1.category_name = t4.category_name
+;
+
+SELECT * 
+FROM customer_category_joint_table
+WHERE customer_id = 1
+ORDER BY percentile
+LIMIT 15;
+
+--Ordering and Filtering rows With Row_Number
+
+DROP TABLE IF EXISTS top_categories_information;
+
+CREATE TEMP TABLE  top_categories_information AS (
+WITH ordered_customer_category_joint_table AS (
+  SELECT 
+      customer_id,
+      category_name,
+      rental_count,
+      average_comparison,
+      percentile,
+      category_percentage,
+      ROW_NUMBER () over(
+          PARTITION BY customer_id
+          ORDER BY rental_count desc, latest_rental_date desc
+        ) AS category_ranking
+  FROM customer_category_joint_table
+)
+SELECT * 
+FROM ordered_customer_category_joint_table
+WHERE category_ranking <=2
+);
+
+--
+SELECT * 
+FROM top_categories_information
+WHERE customer_id IN (1,2,3)
+ORDER BY customer_id,category_ranking
+;
