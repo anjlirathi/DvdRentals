@@ -272,3 +272,24 @@ FROM top_categories_information
 WHERE customer_id IN (1,2,3)
 ORDER BY customer_id,category_ranking
 ;
+
+/* PEAR
+Problem
+Exploration
+Analysis
+Report
+
+Problem - providing customer insights to the marketing team 
+Exploration - */
+
+-- how many foreign keys only exist in the left table and not in the right?
+
+SELECT
+  COUNT(DISTINCT rental.inventory_id)
+FROM dvd_rentals.rental
+WHERE NOT EXISTS (
+  SELECT inventory_id
+  FROM dvd_rentals.inventory
+  WHERE rental.inventory_id = inventory.inventory_id
+);
+
