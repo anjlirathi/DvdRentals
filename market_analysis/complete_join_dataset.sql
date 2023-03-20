@@ -292,4 +292,21 @@ WHERE NOT EXISTS (
   FROM dvd_rentals.inventory
   WHERE rental.inventory_id = inventory.inventory_id
 );
-
+-- how many foreign keys only exist in the right table and not in the left?
+-- note the table reference changes
+SELECT
+  COUNT(DISTINCT inventory.inventory_id)
+FROM dvd_rentals.inventory
+WHERE NOT EXISTS (
+  SELECT inventory_id
+  FROM dvd_rentals.rental
+  WHERE rental.inventory_id = inventory.inventory_id
+);
+-- Investigate film ID 
+SELECT *
+FROM dvd_rentals.inventory
+WHERE NOT EXISTS (
+  SELECT inventory_id
+  FROM dvd_rentals.rental
+  WHERE rental.inventory_id = inventory.inventory_id
+);
