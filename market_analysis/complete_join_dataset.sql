@@ -310,3 +310,120 @@ WHERE NOT EXISTS (
   FROM dvd_rentals.rental
   WHERE rental.inventory_id = inventory.inventory_id
 );
+
+--- check the duplicacy or overlappig of foreign key col values
+
+Select 
+ -- customer_id,
+  COUNT (DISTINCT inventory_id) 
+FROM dvd_rentals.rental
+WHERE NOT EXISTS (
+  SELECT inventory_id
+  FROM dvd_rentals.inventory
+  WHERE rental.inventory_id = inventory.inventory_id
+)
+;
+
+SELECT 
+  COUNT (DISTINCT inventory.inventory_id)
+FROM dvd_rentals.inventory
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM dvd_rentals.rental
+  WHERE inventory.inventory_id = rental.inventory_id
+);
+
+--Inspect the FILM ID which is not yet rented :
+
+SELECT * 
+FROM dvd_rentals.inventory
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM dvd_rentals.rental
+  WHERE inventory.inventory_id = rental.inventory_id
+);
+
+-- Let's inspect whether the left and inner join have any differences in their row counts:
+
+DROP TABLE IF EXISTS left_join_table;
+CREATE TEMP TABLE left_join_table AS 
+SELECT 
+  rental.customer_id,
+  rental.inventory_id,
+  inventory.film_id
+FROM dvd_rentals.rental
+LEFT JOIN dvd_rentals.inventory
+ON rental.inventory_id = inventory.inventory_id
+;
+
+DROP TABLE IF EXISTS inner_join_table;
+CREATE TEMP TABLE inner_join_table AS
+SELECT 
+  rental.customer_id,
+  rental.inventory_id,
+  inventory.film_id
+FROM dvd_rentals.rental
+INNER JOIN dvd_rentals.inventory
+ON rental.inventory_id = inventory.inventory_id
+;
+--OUTPUT 
+(
+SELECT 
+  'left join' AS join_type,
+  COUNT(*) AS record_count,
+  COUNT(DISTINCT inventory_id) AS unique_key_values
+FROM left_join_table
+)
+UNION
+(
+SELECT 
+  'inner join' AS join_type,
+  COUNT(*) AS record_count,
+  COUNT(DISTINCT inventory_id) AS unique_key_values
+FROM inner_join_table
+)
+;
+
+/*it indicates that both the join have same results
+
+Relationships : 1-1, 1-Many, Many-Many
+
+Let's inspect the relationship bewtween FilmID and actor columns within Film actor table:
+Hypothesis:
+H1 : 1 Actor could work in Many Films
+H2: 1 Film could have Many Actors
+Let's analyze the hunch of the point: */
+
+-- H1:
+WITH actor_film_count AS (
+SELECT 
+  actor_id,
+  count(DISTINCT film_id) AS film_count
+FROM dvd_rentals.film_actor
+GROUP BY actor_id
+)
+SELECT 
+  film_count,
+  COUNT(*) AS total_actors
+FROM actor_film_count
+GROUP BY film_count
+ORDER BY film_count DESC;
+
+--H2:
+
+WITH film_actor_count AS(
+SELECT 
+  film_id,
+  COUNT(DISTINCT actor_id) AS actor_count
+FROM dvd_rentals.film_actor
+GROUP BY film_id
+)
+SELECT 
+  actor_count,
+  COUNT(*) AS total_films
+FROM film_actor_count
+GROUP BY actor_count
+ORDER BY actor_count DESC;
+
+-- Hence Our hypothesis about relationship within data was correct
+
