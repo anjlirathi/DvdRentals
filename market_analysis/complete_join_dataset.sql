@@ -427,3 +427,67 @@ ORDER BY actor_count DESC;
 
 -- Hence Our hypothesis about relationship within data was correct
 
+/* Analysis :
+Solution Plan:
+1: creating complete joint dataset
+*/
+
+DROP TABLE IF EXISTS complete_joint_dataset;
+CREATE TEMP TABLE complete_joint_dataset AS 
+SELECT 
+  rental.customer_id,
+  rental.rental_date,
+  inventory.film_id,
+  film.title,
+  category.name AS category_name
+FROM dvd_rentals.rental
+INNER JOIN dvd_rentals.inventory
+ON rental.inventory_id = inventory.inventory_id
+INNER JOIN dvd_rentals.film
+ON inventory.film_id = film.film_id
+INNER JOIN dvd_rentals.film_category
+ON film.film_id = film_category.film_id
+INNER JOIN dvd_rentals.category 
+ON film_category.category_id = category.category_id
+;
+SELECT * 
+FROM complete_joint_dataset
+LIMIT 10;
+
+-- 2: Category Counts
+
+DROP TABLE IF EXISTS category_counts;
+CREATE TEMP TABLE category_counts AS
+SELECT 
+  customer_id,
+  category_name,
+  COUNT (*) AS rental_count,
+  MAX(rental_date) AS latest_rental_date
+FROM complete_joint_dataset
+GROUP BY customer_id, category_name
+;
+
+SELECT * 
+FROM category_counts
+WHERE customer_id =1
+ORDER BY 
+  rental_count DESC,
+  latest_rental_date DESC
+LIMIT 10;
+
+-- 3: Total Counts
+
+DROP TABLE IF EXISTS total_counts;
+CREATE TEMP TABLE total_counts AS
+SELECT 
+  customer_id,
+  SUM(rental_count) AS total_count
+FROM category_counts
+GROUP BY customer_id;
+
+SELECT *
+FROM total_counts
+--ORDER BY customer_id, total_count
+LIMIT 10;
+
+--4: 
