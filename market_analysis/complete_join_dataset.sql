@@ -491,3 +491,209 @@ FROM total_counts
 LIMIT 10;
 
 --4: 
+--4: Top categories
+
+DROP TABLE IF EXISTS top_categories;
+CREATE TEMP TABLE top_categories AS
+WITH ranked_cte AS (
+  SELECT 
+    customer_id,
+    category_name,
+    rental_count,
+    DENSE_RANK() OVER (
+      PARTITION BY customer_id
+      ORDER BY 
+        rental_count DESC,
+        latest_rental_date DESC,
+        category_name
+    ) AS category_rank
+  FROM category_counts
+)
+SELECT * 
+FROM ranked_cte
+WHERE category_rank <= 2;
+
+--Output
+
+SELECT * FROM top_categories
+LIMIT 10;
+
+--5: Average Category Count
+
+DROP TABLE IF EXISTS average_category_count;
+CREATE TEMP TABLE average_category_count AS
+SELECT 
+  category_name,
+  FLOOR(AVG(rental_count)) AS category_avg
+FROM category_counts
+GROUP BY category_name
+--ORDER BY category_name
+;
+
+-- Output
+
+SELECT *
+FROM average_category_count
+ORDER BY 
+  category_avg DESC,
+  Category_name;
+--LIMIT 10; 
+
+--6: Top Category Percentile
+
+DROP TABLE IF EXISTS top_category_percentile;
+CREATE TEMP TABLE top_category_percentile AS 
+WITH calculated_cte AS (
+    SELECT 
+      top_categories. customer_id,
+      top_categories.category_name AS top_category_name,
+      top_categories.rental_count,
+      top_categories.category_rank,
+      category_counts.category_name,
+      PERCENT_RANK() OVER(
+        PARTITION BY category_counts.category_name
+        ORDER BY category_counts.rental_count DESC
+      ) AS raw_percentile
+    FROM category_counts
+    LEFT JOIN top_categories
+    ON category_counts.customer_id = top_categories.customer_id
+)
+SELECT 
+  customer_id,
+  category_name,
+  rental_count,
+  category_rank,
+  CASE 
+  WHEN  ROUND(100*raw_percentile) =0 THEN 1
+  ELSE  ROUND(100*raw_percentile)
+  END AS percentile
+FROM calculated_cte
+WHERE category_rank =1 
+AND top_category_name = category_name
+;
+
+--Output
+
+SELECT * 
+FROM top_category_percentile
+ORDER BY customer_id;
+
+--7: First Category Insights
+
+DROP TABLE IF EXISTS first_category_insights;
+CREATE TEMP TABLE first_category_insights AS
+SELECT 
+  base.customer_id,
+  base.category_name,
+  base.rental_count,
+  base.rental_count - average.category_avg AS average_comparison,
+  base.percentile
+FROM top_category_percentile AS base
+LEFT JOIN average_category_count AS average
+ON base.category_name = average.category_name;
+
+--Output
+
+SELECT * 
+FROM first_category_insights
+--ORDER BY customer_id
+LIMIT 20;
+
+
+--8: Second Category Insights
+
+DROP TABLE IF EXISTS second_category_insights;
+CREATE TEMP TABLE second_category_insights AS
+SELECT 
+  top_categories.customer_id,
+  top_categories.category_name,
+  top_categories.rental_count,
+  ROUND(100 * top_categories.rental_count::NUMERIC/total_counts.total_count) AS percentage
+FROM top_categories
+LEFT JOIN total_counts
+ON top_categories.customer_id = total_counts.customer_id
+WHERE category_rank =2;
+
+--Output
+
+SELECT * 
+FROM second_category_insights
+LIMIT 10;
+
+
+-- Category Recommendations
+
+--Film counts
+
+DROP TABLE IF EXISTS film_counts;
+CREATE TEMP TABLE film_counts AS
+SELECT DISTINCT
+  film_id,
+  title,
+  category_name,
+  COUNT(*) OVER(
+    PARTITION BY film_id
+  ) AS rental_count
+FROM complete_joint_dataset;
+
+--Output
+SELECT * 
+FROM film_counts
+ORDER BY rental_count DESC
+LIMIT 15;
+
+
+-- Category film exclusion
+
+DROP TABLE IF EXISTS category_film_exclusion;
+CREATE TEMP TABLE category_film_exclusion AS
+SELECT DISTINCT
+  customer_id,
+  film_id
+FROM complete_joint_dataset;
+--Output
+SELECT * 
+FROM category_film_exclusion
+LIMIT 10;
+
+--Category Recommendations
+
+DROP TABLE IF EXISTS category_recommendations;
+CREATE TEMP TABLE category_recommendations AS
+WITH ranked_films_cte AS(
+SELECT 
+  top_categories.customer_id,
+  top_categories.category_name,
+  top_categories.category_rank,
+  film_counts.film_id,
+  film_counts.title,
+  film_counts.rental_count,
+  DENSE_RANK() OVER(
+    PARTITION BY 
+      top_categories.customer_id, 
+      top_categories.category_rank
+    ORDER BY 
+      film_counts.rental_count DESC,
+      film_counts.title 
+  ) AS reco_rank
+FROM top_categories
+INNER JOIN film_counts
+ON top_categories.category_name = film_counts.category_name
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM category_film_exclusion
+  WHERE 
+    category_film_exclusion.customer_id = top_categories.customer_id
+    AND
+    category_film_exclusion.film_id = film_counts.film_id
+ )
+)
+SELECT * 
+FROM ranked_films_cte
+WHERE reco_rank <= 3;
+
+--Output
+SELECT * FROM category_recommendations
+WHERE customer_id =1
+ORDER BY 
+  category_rank, reco_rank;
