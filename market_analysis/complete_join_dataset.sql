@@ -700,6 +700,8 @@ ORDER BY
 
   --ACTOR Insights
 
+  --Actor Joint Datset
+
 DROP TABLE IF EXISTS actor_joint_dataset;
 CREATE TEMP TABLE actor_joint_dataset AS
 SELECT 
@@ -772,4 +774,136 @@ WHERE actor_rank = 1;
 
 --Output
 SELECT * FROM top_actor_counts;
+
+--Actor Film Recommendations
+
+-- Actor Film Counts
+
+DROP TABLE IF EXISTS actor_film_counts;
+CREATE TEMP TABLE actor_film_counts AS
+WITH film_counts AS(
+  SELECT 
+      film_id,
+      COUNT(DISTINCT rental_id) AS rental_count
+  FROM actor_joint_dataset
+  GROUP BY film_id
+)
+SELECT 
+  actor_joint_dataset.film_id,
+  actor_joint_dataset.actor_id,
+  actor_joint_dataset.title,
+ -- actor_joint_dataset.first_name,
+ -- actor_joint_dataset.last_name,
+  film_counts.rental_count
+FROM actor_joint_dataset
+LEFT JOIN film_counts
+ON actor_joint_dataset.film_id = film_counts.film_id;
+
+--Output
+
+SELECT * FROM actor_film_counts
+LIMIT 10;
+
+/*--checking with previous window function method 
+
+SELECT DISTINCT
+  film_id,
+  actor_id,
+  Count(*) OVER (
+  PARTITION BY film_id
+  ) AS rental_count
+FROM actor_joint_dataset
+WHERE film_id =80;
+
+--results from both the methods are varying since actor_id and film_id have mamy to mamy relationship*/
+
+-- Actor Film Exclusion
+
+DROP TABLE IF EXISTS actor_film_exclusion;
+CREATE TEMP TABLE actor_film_exclusion AS
+(
+SELECT 
+  customer_id,
+  film_id
+FROM complete_joint_dataset
+)
+UNION
+(
+SELECT
+  customer_id,
+  film_id
+FROM category_recommendations
+);
+--Output
+SELECT * 
+FROM actor_film_exclusion
+LIMIT 15;
+
+/*--tweak the table with actor joint dataset
+
+DROP TABLE IF EXISTS actor_film_exclusion_a;
+CREATE TEMP TABLE actor_film_exclusion_a AS
+(
+SELECT 
+  customer_id,
+  film_id
+FROM actor_joint_dataset
+)
+UNION
+(
+SELECT
+  customer_id,
+  film_id
+FROM category_recommendations
+);
+
+SELECT * 
+FROM actor_film_exclusion_a
+LIMIT 15;
+
+Results from both the query are same ???*/
+
+-- Actor Recommendations
+
+DROP TABLE IF EXISTS actor_recommendation;
+CREATE TEMP TABLE actor_recommendation AS
+WITH ranked_actor_film AS (
+SELECT
+  top_actor_counts.customer_id,
+  top_actor_counts.first_name,
+  top_actor_counts.last_name,
+  top_actor_counts.rental_count,
+  actor_film_counts.title,
+  actor_film_counts.film_id,
+  actor_film_counts.actor_id,
+  DENSE_RANK() OVER (
+    PARTITION BY 
+      top_actor_counts.customer_id
+    ORDER BY
+      actor_film_counts.rental_count DESC,
+      actor_film_counts.title
+  ) AS reco_rank
+FROM top_actor_counts
+INNER JOIN actor_film_counts
+ON top_actor_counts.actor_id = actor_film_counts.actor_id
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM actor_film_exclusion
+  WHERE
+   actor_film_exclusion.customer_id = top_actor_counts.customer_id AND
+   actor_film_exclusion.film_id = actor_film_counts.film_id
+) 
+)
+SELECT * FROM ranked_actor_film
+WHERE reco_rank <= 3;
+
+--Output
+SELECT * FROM actor_recommendation
+--WHERE reco_rank = 2
+ORDER BY customer_id, reco_rank
+LIMIT 15;
+
+
+
+
 
